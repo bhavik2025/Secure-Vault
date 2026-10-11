@@ -81,7 +81,7 @@ def test_role_from_another_organization_is_ignored(make_user, org_a, org_b):
     user.roles.add(foreign_admin_role)  # simulate a bad data write / bug
     fresh = type(user).objects.get(pk=user.pk)
     assert fresh.has_app_perm("users.manage") is False
-    assert fresh.app_permissions() == ["org.view", "vault.use"]
+    assert fresh.app_permissions() == ["org.view", "services.view", "vault.use"]
 
 
 def test_assign_role_only_uses_the_users_own_organization(make_user, org_a, org_b):
@@ -120,7 +120,7 @@ def test_security_admin_cannot_change_account_status(make_user, api_as, org_a):
 
 def test_me_lists_permissions_for_ui_only(make_user, api_as, org_a):
     data = api_as(make_user(org_a, "EMPLOYEE")).get("/api/auth/me/").json()
-    assert data["permissions"] == ["org.view", "vault.use"]
+    assert data["permissions"] == ["org.view", "services.view", "vault.use"]
     assert data["organization"]["name"] == "Org A"
 
 

@@ -1,5 +1,6 @@
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import action
@@ -33,6 +34,7 @@ class LoginView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
+    @extend_schema(request=LoginSerializer, responses={200: MeSerializer, 401: OpenApiResponse(description="Invalid email or password.")})
     def post(self, request):
         # Login CSRF: DRF skips CSRF for unauthenticated calls, so enforce it explicitly.
         SessionAuthentication().enforce_csrf(request)
@@ -73,6 +75,7 @@ class LoginView(APIView):
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=None, responses={204: None})
     def post(self, request):
         user = request.user
         UserSession.objects.filter(session_key=request.session.session_key).delete()
@@ -84,6 +87,7 @@ class LogoutView(APIView):
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=MeSerializer)
     def get(self, request):
         return Response(MeSerializer(request.user).data)
 
@@ -96,6 +100,7 @@ class EmployeeViewSet(OrganizationScopedMixin, ReadOnlyModelViewSet):
         code = "users.manage" if self.action == "set_status" else "users.view"
         return [HasAppPermission(code)()]
 
+    @extend_schema(request=StatusChangeSerializer, responses=EmployeeSerializer)
     @action(detail=True, methods=["post"], url_path="status")
     def set_status(self, request, pk=None):
         target = self.get_object()  # org-scoped queryset: other tenants' users are 404

@@ -21,16 +21,16 @@ class MeSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "full_name", "organization", "department", "roles", "permissions"]
         read_only_fields = fields
 
-    def get_organization(self, u):
+    def get_organization(self, u) -> dict:
         return {"id": u.organization_id, "name": u.organization.name}
 
-    def get_department(self, u):
+    def get_department(self, u) -> dict | None:
         return {"id": u.department_id, "name": u.department.name} if u.department_id else None
 
-    def get_roles(self, u):
+    def get_roles(self, u) -> list[str]:
         return sorted(u.roles.filter(organization_id=u.organization_id).values_list("code", flat=True))
 
-    def get_permissions(self, u):
+    def get_permissions(self, u) -> list[str]:
         return u.app_permissions()
 
 
@@ -42,7 +42,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "full_name", "department", "status", "roles", "last_login"]
         read_only_fields = fields
 
-    def get_roles(self, u):
+    def get_roles(self, u) -> list[str]:
         return sorted(r.code for r in u.roles.all() if r.organization_id == u.organization_id)
 
 

@@ -30,6 +30,8 @@ INSTALLED_APPS = [
     "apps.organizations",
     "apps.accounts",
     "apps.audit",
+    "apps.catalog",
+    "apps.policies",
 ]
 
 # Must be set before the first migration that touches user tables.
@@ -81,7 +83,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
+    # Length and symbol rules come from the organization's active SecurityPolicy (built-in
+    # default: 12 chars + symbol when an org has none), replacing Django's fixed length check.
+    {"NAME": "apps.policies.validators.OrganizationPolicyPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -135,6 +139,7 @@ REST_FRAMEWORK = {
     # Deny by default: every endpoint must opt in to being public.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min"},
@@ -147,6 +152,11 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Zero-trust credential & access governance platform (server-side envelope encryption; not zero-knowledge).",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "AccountStatusEnum": "apps.accounts.models.AccountStatus",
+        # Departments and services share identical ACTIVE/INACTIVE choices, hence one name.
+        "ActiveInactiveStatusEnum": "apps.organizations.models.Department.Status",
+    },
 }
 
 # Never log request bodies or Authorization/cookie headers (secrets live there).

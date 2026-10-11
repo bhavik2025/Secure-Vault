@@ -48,6 +48,12 @@ def _entry_fields(obj) -> dict:
     return {name: getattr(obj, name) for name in _HASHED_FIELDS}
 
 
+def changed_fields(before: dict, after: dict) -> dict:
+    """{field: {"from": old, "to": new}} for fields whose value differs. Callers pass only
+    non-secret fields; `record()` scrubs the result as a second line of defence."""
+    return {k: {"from": before.get(k), "to": after[k]} for k in after if before.get(k) != after[k]}
+
+
 def client_ip(request) -> str | None:
     """Direct peer address only. `X-Forwarded-For` is client-controlled unless a trusted
     proxy overwrites it, so it must be wired in deliberately at deployment time."""
