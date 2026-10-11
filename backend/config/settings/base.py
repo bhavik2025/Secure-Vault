@@ -27,10 +27,17 @@ INSTALLED_APPS = [
     "corsheaders",
     "channels",
     "apps.core",
+    "apps.organizations",
+    "apps.accounts",
+    "apps.audit",
 ]
+
+# Must be set before the first migration that touches user tables.
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.core.middleware.RequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",  # before CommonMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -106,7 +113,13 @@ CACHES = {
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
-SESSION_COOKIE_AGE = 60 * 60 * 8  # 8h absolute; tightened by policy in a later phase
+# Sliding idle timeout: the expiry is pushed forward on every request, so 30 minutes of
+# inactivity ends the session. An absolute lifetime cap arrives with the security policy work.
+SESSION_COOKIE_AGE = 60 * 30
+SESSION_SAVE_EVERY_REQUEST = True
+
+# HMAC key for the audit hash chain. Separate from SECRET_KEY and the vault keys.
+AUDIT_HMAC_KEY = env("AUDIT_HMAC_KEY", default="")
 # The SPA must read the CSRF cookie to echo it in X-CSRFToken, so this one is NOT HttpOnly.
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
@@ -124,7 +137,9 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min"},
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 25,
 }
 
 SPECTACULAR_SETTINGS = {
