@@ -84,10 +84,52 @@ New organizations start with an active "Default Policy".
 | `allow_view_once` | `ensure_view_once_allowed` raises `PolicyViolation` (HTTP `403`, `code: view_once_disabled`) | Helper ready; called by the sharing phase |
 | `require_device_trust` | `device_trust_required` | Helper ready; called by the device phase |
 
+## Vault: credentials and secure notes (new)
+All vault endpoints require `vault.use` **and** ownership: you only ever see your own records. Holding an
+administrative role grants nothing here. Responses carry `Cache-Control: no-store`. **No endpoint returns a
+secret**: there is deliberately no reveal route until the authorization/device/lockdown pipeline exists.
+
+| Method | Path | Behaviour |
+|---|---|---|
+| GET | `/api/vault/credentials/` | Own ACTIVE credentials. `?status=ARCHIVED`, `?q=` (title/username/service), `?category=`, `?tag=`, `?service=<id>`, `?expiry=expired\|soon`, `?ordering=` (`title, updated_at, created_at, expiry_date`, optional `-`) |
+| POST | `/api/vault/credentials/` | `{title, password, username?, service?, category?, tags?, expiry_date?}` -> `201` metadata only |
+| GET / PATCH / PUT | `/api/vault/credentials/{id}/` | Another user's id is `404`. Sending `password` rotates it (new DEK + nonces). Archived items are read-only |
+| POST | `/api/vault/credentials/{id}/archive/`, `/unarchive/` | Soft state change, idempotent, audited |
+| GET, POST, GET/PATCH, archive | `/api/vault/notes/...` | Same shape with `content` (<= 20,000 chars) instead of `password`; no password policy applies |
+| DELETE | any | `405` (records are archived, never hard-deleted) |
+
+Credential response (no secret fields): `id, title, service, service_name, username, password_masked` (fixed 12
+bullets, never the real length), `has_password, category, tags, expiry_date, expiry_state`
+(`none, ok, expiring_soon, expired`), `status, owner, strength {bits,label}, reused_in_my_vault,
+warnings, password_changed_at, created_at, updated_at`.
+
+`warnings` may contain `expired`, `expiring_soon`, `weak_password` (< 36 estimated bits),
+`reused_in_my_vault` (owner's own vault only), `older_than_policy_max_age`.
+
+Policy enforcement on write (server-side): password length and symbol rules from the active policy; expiry
+must be a future date no later than `max_age_days`; if omitted it defaults to today + `max_age_days`; a rotated
+password without an explicit expiry gets a fresh default; `expiry_date: null` is rejected when the policy
+has a maximum age.
+
+Tags: up to 10, 1-32 chars of letters, digits, space and `. _ : -`, lower-cased and de-duplicated.
+Titles and usernames reject `<`, `>` and control characters.
+
+### Password utilities
+| Method | Path | Behaviour |
+|---|---|---|
+| POST | `/api/vault/password/generate/` | `{length?, lowercase?, uppercase?, digits?, symbols?, exclude_ambiguous?}` -> `{password, strength, policy}`. Default length `max(20, policy.min_length)`. Requests that would violate the policy return `403` with `code` `below_min_length` or `symbols_required`. The password is returned once and never stored, logged or audited |
+| POST | `/api/vault/password/check/` | `{password}` -> `{strength {bits,label,issues}, policy_violations, compliant}`; never echoes the password |
+
+Both are rate-limited (30/min per scope). Strength is a heuristic upper bound: it cannot see dictionary words or
+keyboard patterns, so human-chosen passwords are over-rated; generated ones are estimated well.
+
 ## Audit events written by this module
 | Action | When | `reason_code` |
 |---|---|---|
 | `CREATE` / `EDIT` (target `service`) | create / field change (no event for a no-op) / deactivate / activate | `created`, `updated`, `deactivated`, `activated` |
 | `POLICY_CHANGE` (target `security_policy`) | create / field change / activation | `created`, `updated`, `activated` |
 
-Metadata carries `{"changes": {"field": {"from": old, "to": new}}}` for non-secret fields only.
+| `CREATE` / `EDIT` (target `credential`, `secure_note`) | create / metadata change / secret rotation (`rotated: true`, no value) / archive / unarchive | `created`, `updated`, `archived`, `unarchived` |
+
+Metadata carries `{"changes": {"field": {"from": old, "to": new}}}` for non-secret fields only. A changed
+`username` is recorded as `{"changed": true}` without the value. Passwords and note content are never present.

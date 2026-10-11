@@ -122,6 +122,19 @@ def test_scrub_truncates_long_values_and_handles_odd_types():
     assert scrub({"when": object()})["when"].startswith("<object")
 
 
+def test_scrub_never_renders_raw_bytes_and_redacts_crypto_material_names():
+    out = scrub({"blob": b"\x01secret-bytes", "wrapped_dek": "x", "kek_version": 1, "blind_index": "x", "cipher": "x"})
+    assert out == {"blob": REDACTED, "wrapped_dek": REDACTED, "kek_version": REDACTED, "blind_index": REDACTED, "cipher": REDACTED}
+
+
+def test_scrub_redacts_key_like_values_under_innocent_names_but_keeps_normal_text():
+    key_like = "dGhpcy1pcy1hLWZha2Uta2V5LW1hdGVyaWFsLTEyMzQ1Njc4OTA="
+    out = scrub({"note": key_like, "title": "Production database (primary)", "ref": "a" * 60})
+    assert out["note"] == REDACTED
+    assert out["title"] == "Production database (primary)"
+    assert out["ref"] == "a" * 60  # no digit: not key-like
+
+
 @pytest.mark.django_db
 def test_record_scrubs_metadata_before_storing(org_a):
     ev = record(

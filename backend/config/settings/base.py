@@ -1,4 +1,6 @@
 """Base settings shared by every environment. All secrets come from the environment."""
+import os
+import re
 from pathlib import Path
 
 import environ
@@ -32,6 +34,7 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.catalog",
     "apps.policies",
+    "apps.vault",
 ]
 
 # Must be set before the first migration that touches user tables.
@@ -124,6 +127,19 @@ SESSION_SAVE_EVERY_REQUEST = True
 
 # HMAC key for the audit hash chain. Separate from SECRET_KEY and the vault keys.
 AUDIT_HMAC_KEY = env("AUDIT_HMAC_KEY", default="")
+
+# --- Vault cryptography (see docs/crypto.md). Raw base64 values; decoded and validated lazily by
+# apps.vault.crypto so a bad value fails closed at first use and in `manage.py check`.
+# The setting names contain "KEY" so Django's debug-page cleanser masks them.
+# One entry per KEK version, e.g. env VAULT_KEK_V1, VAULT_KEK_V2 -> {1: "...", 2: "..."}.
+VAULT_KEY_ENCRYPTION_KEYS_B64 = {
+    int(m.group(1)): value
+    for name, value in os.environ.items()
+    if value and (m := re.fullmatch(r"VAULT_KEK_V(\d+)", name))
+}
+VAULT_ACTIVE_KEK_VERSION = env.int("VAULT_KEK_ACTIVE_VERSION", default=1)
+# A DIFFERENT secret from every KEK: it only keys the HMAC blind index.
+VAULT_BLIND_INDEX_KEY_B64 = env("VAULT_BLIND_INDEX_KEY", default="")
 # The SPA must read the CSRF cookie to echo it in X-CSRFToken, so this one is NOT HttpOnly.
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
@@ -142,7 +158,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min", "vault_secret": "30/min"},
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
 }
@@ -156,6 +172,7 @@ SPECTACULAR_SETTINGS = {
         "AccountStatusEnum": "apps.accounts.models.AccountStatus",
         # Departments and services share identical ACTIVE/INACTIVE choices, hence one name.
         "ActiveInactiveStatusEnum": "apps.organizations.models.Department.Status",
+        "RecordStatusEnum": "apps.vault.models.EncryptedRecord.Status",
     },
 }
 
