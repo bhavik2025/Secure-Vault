@@ -81,13 +81,14 @@ class CredentialSerializer(_BaseRecordSerializer):
     expiry_state = serializers.SerializerMethodField()
     reused_in_my_vault = serializers.SerializerMethodField()
     warnings = serializers.SerializerMethodField()
+    access = serializers.SerializerMethodField()
 
     class Meta:
         model = Credential
         fields = [
             "id", "title", "service", "service_name", "username", "password", "password_masked", "has_password",
             "category", "tags", "expiry_date", "expiry_state", "status", "owner", "strength",
-            "reused_in_my_vault", "warnings", "password_changed_at", "created_at", "updated_at",
+            "reused_in_my_vault", "warnings", "access", "password_changed_at", "created_at", "updated_at",
         ]
         # status changes only via archive/unarchive. Encrypted columns are not fields at all.
         read_only_fields = ["id", "status", "password_changed_at", "created_at", "updated_at"]
@@ -118,7 +119,26 @@ class CredentialSerializer(_BaseRecordSerializer):
             return "expiring_soon"
         return "ok"
 
+    def get_access(self, obj) -> dict:
+        """What the requester may do with this credential (a UI hint; the server re-checks every action)."""
+        access = getattr(obj, "_access", None)
+        if access is None or access.role == "owner":
+            return {"role": "owner", "can_view": True, "can_edit": True, "can_share": True, "expires_at": None, "view_once": False}
+        return {
+            "role": "shared",
+            "can_view": access.can_view,
+            "can_edit": access.can_edit,
+            "can_share": access.can_share,
+            "expires_at": access.expires_at,
+            "view_once": bool(access.grants) and all(g.is_view_once for g in access.grants),
+        }
+
+    def _is_owner_view(self, obj) -> bool:
+        return obj.owner_id == self.context["request"].user.pk
+
     def get_reused_in_my_vault(self, obj) -> bool:
+        if not self._is_owner_view(obj):
+            return False  # a delegate learns nothing about the owner's other credentials
         # Scope is deliberately the owner's OWN vault. An org-wide "is this reused?" answer would be a
         # password-guessing oracle: create a credential with a guess and see whether anyone else has it.
         annotated = getattr(obj, "reused", None)
@@ -259,6 +279,18 @@ def annotate_reuse(queryset):
             ).exclude(pk=OuterRef("pk"))
         )
     )
+
+
+# --- reveal ---------------------------------------------------------------------------------------
+
+class RevealResponseSerializer(serializers.Serializer):
+    """Returned only by the reveal action. `password` for credentials, `content` for secure notes."""
+
+    password = serializers.CharField(required=False)
+    content = serializers.CharField(required=False)
+    via = serializers.ChoiceField(choices=["owner", "grant"])
+    view_once = serializers.BooleanField()
+    grant_id = serializers.IntegerField(allow_null=True)
 
 
 # --- password utilities ----------------------------------------------------------------------

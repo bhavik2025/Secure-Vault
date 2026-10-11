@@ -12,7 +12,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": [],
     # Generous rates so unrelated tests never trip them; dedicated tests lower them.
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "1000/min", "user": "1000/min", "login": "1000/min", "vault_secret": "1000/min",
+        "anon": "1000/min", "user": "1000/min", "login": "1000/min", "vault_secret": "1000/min", "reveal": "1000/min",
     },
 }
 AUDIT_HMAC_KEY = "test-only-audit-hmac-key-not-a-secret"

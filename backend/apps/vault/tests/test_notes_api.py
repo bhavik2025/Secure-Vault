@@ -76,7 +76,8 @@ def test_archive_flow_search_and_no_delete_or_reveal(emp_client):
     assert emp_client.patch(f"{URL}{nid}/", {"title": "nope"}, format="json").status_code == 400
     assert emp_client.post(f"{URL}{nid}/unarchive/").json()["status"] == "ACTIVE"
     assert emp_client.delete(f"{URL}{nid}/").status_code == 405
-    assert emp_client.get(f"{URL}{nid}/reveal/").status_code == 404
+    assert emp_client.get(f"{URL}{nid}/reveal/").status_code == 405  # reveal is POST-only
+    assert emp_client.get(f"{URL}{nid}/decrypt/").status_code == 404
 
 
 def test_anonymous_is_rejected(api):

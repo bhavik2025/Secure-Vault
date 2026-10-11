@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.db.models import Q
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.mixins import CreateModelMixin, ListModelMixin, RetrieveModelMixin, UpdateModelMixin
@@ -13,10 +14,14 @@ from rest_framework.viewsets import GenericViewSet
 from apps.accounts.permissions import HasAppPermission
 from apps.audit.models import AuditEvent
 from apps.audit.services import changed_fields, record
+from apps.core.api_errors import EditNotGranted, NoAccess
 from apps.core.exceptions import PolicyViolation
 from apps.core.scoping import OrganizationScopedMixin
+from apps.lockdown.permissions import NotLockedDown
 from apps.policies.enforcement import check_password_rules, get_effective_policy
+from apps.sharing.access import resolve_access
 
+from . import pipeline
 from .models import Credential, EncryptedRecord, SecureNote
 from .passwords import estimate_strength, generate_password
 from .serializers import (
@@ -25,6 +30,7 @@ from .serializers import (
     PasswordCheckResponseSerializer,
     PasswordGenerateRequestSerializer,
     PasswordGenerateResponseSerializer,
+    RevealResponseSerializer,
     SecureNoteSerializer,
     annotate_reuse,
 )
@@ -46,7 +52,8 @@ class OwnerScopedMixin(OrganizationScopedMixin):
     """Object-level permission: you only ever see your own records.
 
     Deliberately NOT widened for administrators. Holding an admin role never grants access to
-    another person's credentials (shared-with-me arrives with the sharing module, via explicit grants).
+    another person's credentials. Access for non-owners comes only from explicit grants and is resolved
+    per object in `CredentialViewSet.get_object` (see apps.sharing.access).
     """
 
     def get_queryset(self):
@@ -56,10 +63,17 @@ class OwnerScopedMixin(OrganizationScopedMixin):
 class _VaultViewSet(
     NoStoreMixin, OwnerScopedMixin, CreateModelMixin, ListModelMixin, RetrieveModelMixin, UpdateModelMixin, GenericViewSet
 ):
-    """No DELETE route and no reveal route. Records are archived, never hard-deleted."""
+    """No DELETE route. Records are archived, never hard-deleted. The only way to read a secret is the
+    `reveal` action, which runs the full security pipeline (apps.vault.pipeline)."""
 
-    permission_classes = [HasAppPermission("vault.use")]
     # subclasses: queryset, serializer_class, snapshot()
+    throttle_scope = None  # DRF only lets @action override attributes the class defines; `reveal` sets its own
+
+    def get_permissions(self):
+        perms = [HasAppPermission("vault.use")()]
+        if self.action in ("create", "update", "partial_update"):
+            perms.append(NotLockedDown())  # writing secrets is blocked during an emergency lockdown
+        return perms
 
     def snapshot(self, obj) -> dict:
         return {
@@ -118,6 +132,19 @@ class _VaultViewSet(
             self._audit(obj, AuditEvent.Action.EDIT, reason, {"changes": {"status": {"from": None, "to": new_status}}})
         return Response(self.get_serializer(obj).data)
 
+    @extend_schema(request=None, responses=RevealResponseSerializer)
+    @action(detail=True, methods=["post"], throttle_classes=[ScopedRateThrottle], throttle_scope="reveal")
+    @sensitive_variables()
+    def reveal(self, request, pk=None):
+        """Return the decrypted secret iff every pipeline step passes. POST (never GET): it has side
+        effects (audit, and burning a view-once grant) and must not be prefetched or cached."""
+        target = self.get_object()
+        result = pipeline.reveal(request, target)
+        field = "password" if isinstance(target, Credential) else "content"
+        return Response(
+            {field: result.secret, "via": result.via, "view_once": result.view_once, "grant_id": result.grant_id}
+        )
+
     @extend_schema(request=None, responses=CredentialSerializer)
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):
@@ -132,6 +159,26 @@ class _VaultViewSet(
 class CredentialViewSet(_VaultViewSet):
     queryset = Credential.objects.select_related("service", "owner")
     serializer_class = CredentialSerializer
+
+    def get_object(self):
+        """Owner OR holder of a usable grant. archive/unarchive stay owner-only (owner-scoped queryset)."""
+        if self.action in ("archive", "unarchive"):
+            return super().get_object()
+        user, pk = self.request.user, str(self.kwargs["pk"])
+        credential = None
+        if pk.isdigit():
+            credential = annotate_reuse(
+                Credential.objects.select_related("service", "owner").filter(organization_id=user.organization_id)
+            ).filter(pk=int(pk)).first()
+        if credential is None:
+            raise NoAccess()
+        if self.action == "reveal":
+            return credential  # the pipeline resolves access itself so every refusal is audited
+        access = resolve_access(user, credential)  # 404 / 403 / 410 with a precise code
+        if self.action in ("update", "partial_update") and not access.can_edit:
+            raise EditNotGranted()
+        credential._access = access
+        return credential
 
     def snapshot(self, obj):
         data = super().snapshot(obj)

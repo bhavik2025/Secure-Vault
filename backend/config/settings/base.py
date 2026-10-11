@@ -35,6 +35,9 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.policies",
     "apps.vault",
+    "apps.lockdown",
+    "apps.notifications",
+    "apps.sharing",
 ]
 
 # Must be set before the first migration that touches user tables.
@@ -158,7 +161,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle", "rest_framework.throttling.UserRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min", "vault_secret": "30/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "60/min", "user": "300/min", "login": "10/min", "vault_secret": "30/min", "reveal": "20/min"},
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
 }

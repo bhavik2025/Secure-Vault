@@ -239,11 +239,13 @@ def test_status_cannot_be_set_through_patch_and_hard_delete_is_not_offered(emp_c
     assert emp_client.delete(f"{URL}{cid}/").status_code == 405 and Credential.objects.filter(pk=cid).exists()
 
 
-def test_there_is_no_reveal_endpoint_yet(emp_client):
+def test_the_only_way_to_read_a_secret_is_the_post_reveal_action(emp_client):
     cid = create(emp_client).json()["id"]
-    for suffix in ("reveal/", "decrypt/", "password/", "secret/", "copy/"):
+    for suffix in ("decrypt/", "password/", "secret/", "copy/", "plaintext/"):
         assert emp_client.get(f"{URL}{cid}/{suffix}").status_code == 404
         assert emp_client.post(f"{URL}{cid}/{suffix}").status_code == 404
+    assert emp_client.get(f"{URL}{cid}/reveal/").status_code == 405  # never GET: side effects, and cacheable
+    assert emp_client.post(f"{URL}{cid}/reveal/").status_code == 200  # owner, full pipeline
 
 
 # --- list: search, filters, ordering ------------------------------------------------------------------------------

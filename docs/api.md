@@ -123,6 +123,32 @@ Titles and usernames reject `<`, `>` and control characters.
 Both are rate-limited (30/min per scope). Strength is a heuristic upper bound: it cannot see dictionary words or
 keyboard patterns, so human-chosen passwords are over-rated; generated ones are estimated well.
 
+## Reveal, sharing, access requests and notifications (new)
+Design, rules and status codes: see [sharing.md](sharing.md). All endpoints need `vault.use`; responses are `no-store`.
+Error bodies are `{"detail": "...", "code": "<machine code>"}`.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/vault/credentials/{id}/reveal/` | Full pipeline. Returns `{password, via, view_once, grant_id}`. Throttled 20/min. Blocked by lockdown, the device policy, expired/revoked/consumed grants |
+| POST | `/api/vault/notes/{id}/reveal/` | Owner only. Returns `{content, ...}` |
+| GET / PATCH | `/api/vault/credentials/{id}/` | Owner **or** holder of a usable grant (PATCH needs EDIT). Includes an `access` hint: `{role, can_view, can_edit, can_share, expires_at, view_once}` |
+| GET | `/api/vault/credentials/{id}/shares/` | Owner sees all grants; a delegate sees the grants they issued |
+| POST | `/api/vault/credentials/{id}/shares/` | `{grantee_email, can_view?, can_edit?, can_share?, is_view_once?, expires_at? \| expires_in_hours?}`. Owner = direct share, SHARE holder = delegation. Blocked by lockdown |
+| GET | `/api/vault/credentials/{id}/shares/tree/` | Owner only; nested delegation tree |
+| POST | `/api/vault/shares/{id}/revoke/` | Owner (any grant) or grantor (own grants). Cascades. `{..., grants_revoked}`. Allowed during lockdown |
+| GET | `/api/vault/shared-with-me/`, `/api/vault/shared-by-me/` | Usable grants I hold / grants I issued (any status) |
+| POST | `/api/vault/access-requests/` | `{credential_uid, reason (10-500), requested_hours (1-168), want_edit?}` |
+| GET | `/api/vault/access-requests/` | `?scope=mine` (default) or `?scope=review` (I can decide), `?status=` |
+| GET | `/api/vault/access-requests/{id}/` | Requester or an eligible approver; others `404` |
+| POST | `.../access-requests/{id}/approve/`, `/reject/`, `/cancel/` | `{note?, hours?}`; cancel is requester-only; decisions are final |
+| GET | `/api/notifications/` | Own notifications, newest first, `?unread=true` |
+| POST | `/api/notifications/{id}/read/`, `/read-all/` | |
+| GET | `/api/notifications/unread-count/` | |
+
+New audit entries: `SHARE` (`direct`, `delegated`), `REVOKE` (`direct`, `cascade`), `REVEAL` (`owner`, `granted`,
+`granted_view_once`, or a denial reason such as `grant_consumed`), `ACCESS_REQUEST`, `ACCESS_DECISION`
+(`approved`, `rejected`, `cancelled`). Metadata holds ids and permission flags, never secrets.
+
 ## Audit events written by this module
 | Action | When | `reason_code` |
 |---|---|---|

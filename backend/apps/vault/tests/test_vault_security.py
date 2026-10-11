@@ -123,10 +123,14 @@ def test_note_ciphertext_cannot_be_used_as_a_credential_password(emp_client):
 
 # --- surface area ---------------------------------------------------------------------------------------------
 
-def test_no_route_in_the_whole_application_reveals_or_decrypts():
-    routes = " ".join(_walk(get_resolver().url_patterns)).lower()
-    for word in ("reveal", "decrypt", "plaintext", "unseal"):
-        assert word not in routes
+def test_only_the_two_pipeline_gated_reveal_routes_exist():
+    routes = list(_walk(get_resolver().url_patterns))
+    for word in ("decrypt", "plaintext", "unseal"):
+        assert not any(word in r.lower() for r in routes)
+    # the DRF router also emits a ".<format>" suffix twin of every route; they are the same view
+    reveal_routes = sorted(r for r in routes if "reveal" in r.lower() and "(?P<format>" not in r)
+    assert len(reveal_routes) == 2 and all("(?P<pk>[^/.]+)/reveal" in r for r in reveal_routes), reveal_routes
+    assert any("vault/credentials" in r for r in reveal_routes) and any("vault/notes" in r for r in reveal_routes)
 
 
 def test_every_vault_endpoint_requires_authentication(api):
