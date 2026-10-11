@@ -101,7 +101,11 @@ secret**: there is deliberately no reveal route until the authorization/device/l
 Credential response (no secret fields): `id, title, service, service_name, username, password_masked` (fixed 12
 bullets, never the real length), `has_password, category, tags, expiry_date, expiry_state`
 (`none, ok, expiring_soon, expired`), `status, owner, strength {bits,label}, reused_in_my_vault,
-warnings, password_changed_at, created_at, updated_at`.
+warnings, access, request_code, password_changed_at, created_at, updated_at`.
+
+`request_code` is the credential's unguessable identifier used for access requests (`credential_uid`). It is sent
+**to the owner only** (`null` for everyone else). It is not a secret: it is the record's encryption context, which
+authenticated encryption does not need to hide, and every request still needs an approval.
 
 `warnings` may contain `expired`, `expiring_soon`, `weak_password` (< 36 estimated bits),
 `reused_in_my_vault` (owner's own vault only), `older_than_policy_max_age`.

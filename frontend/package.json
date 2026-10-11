@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -27,6 +28,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^29.1.1",
     "oxlint": "^1.81.0",
+    "playwright-core": "^1.64.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",

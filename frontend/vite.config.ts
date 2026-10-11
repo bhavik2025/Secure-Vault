@@ -22,5 +22,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // UI tests type character-by-character in jsdom; under parallel load 5s (the default) is too tight.
+    testTimeout: 20_000,
   },
 })

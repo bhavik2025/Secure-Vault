@@ -60,6 +60,29 @@ def test_a_forger_without_the_hmac_key_cannot_recompute_the_chain(org_a):
         assert verify_chain(org_a.id)[0] is False
 
 
+@pytest.mark.django_db
+def test_verify_command_checks_each_chain_exactly_once_and_flags_tampering(org_a, org_b):
+    from io import StringIO
+
+    from django.core.management import CommandError, call_command
+
+    for _ in range(5):
+        make_event(org_a)
+    for _ in range(3):
+        make_event(org_b)
+    out = StringIO()
+    call_command("verify_audit_chain", stdout=out)
+    lines = [l for l in out.getvalue().splitlines() if l.strip()]
+    assert sorted(lines) == sorted([f"OK    organization={org_a.id}", f"OK    organization={org_b.id}"])
+
+    victim = AuditEvent.objects.filter(organization=org_b).order_by("id")[1]
+    as_table_owner("UPDATE audit_event SET outcome='DENIED' WHERE id=%s", [victim.id])
+    out = StringIO()
+    with pytest.raises(CommandError, match="1 audit chain"):
+        call_command("verify_audit_chain", stdout=out)
+    assert f"BROKEN organization={org_b.id} first bad event id={victim.id}" in out.getvalue()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_writers_keep_a_single_valid_chain(org_a):
     errors = []

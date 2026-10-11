@@ -82,13 +82,14 @@ class CredentialSerializer(_BaseRecordSerializer):
     reused_in_my_vault = serializers.SerializerMethodField()
     warnings = serializers.SerializerMethodField()
     access = serializers.SerializerMethodField()
+    request_code = serializers.SerializerMethodField()
 
     class Meta:
         model = Credential
         fields = [
             "id", "title", "service", "service_name", "username", "password", "password_masked", "has_password",
             "category", "tags", "expiry_date", "expiry_state", "status", "owner", "strength",
-            "reused_in_my_vault", "warnings", "access", "password_changed_at", "created_at", "updated_at",
+            "reused_in_my_vault", "warnings", "access", "request_code", "password_changed_at", "created_at", "updated_at",
         ]
         # status changes only via archive/unarchive. Encrypted columns are not fields at all.
         read_only_fields = ["id", "status", "password_changed_at", "created_at", "updated_at"]
@@ -135,6 +136,14 @@ class CredentialSerializer(_BaseRecordSerializer):
 
     def _is_owner_view(self, obj) -> bool:
         return obj.owner_id == self.context["request"].user.pk
+
+    def get_request_code(self, obj) -> str | None:
+        """The identifier a colleague uses to REQUEST access (shown to the owner only).
+
+        Not a secret: it is the record's encryption context, which authenticated encryption does not need to
+        hide, and a request still needs the owner's (or their manager's) approval. Unguessable, unlike `id`.
+        """
+        return str(obj.uid) if self._is_owner_view(obj) else None
 
     def get_reused_in_my_vault(self, obj) -> bool:
         if not self._is_owner_view(obj):

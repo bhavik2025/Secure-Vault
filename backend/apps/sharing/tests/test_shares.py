@@ -32,6 +32,7 @@ def test_grantee_sees_masked_metadata_but_no_secret_and_no_owner_internals(owner
     assert resp.status_code == 200 and body["access"]["role"] == "shared" and body["access"]["can_view"] is True
     assert "password" not in body and GOOD not in resp.content.decode()
     assert body["reused_in_my_vault"] is False  # a delegate learns nothing about the owner's other credentials
+    assert body["request_code"] is None  # only the owner hands out the access-request identifier
 
 
 def test_expiry_and_permission_validation(owner_client, bob, cred):

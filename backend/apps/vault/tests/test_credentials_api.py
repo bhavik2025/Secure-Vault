@@ -32,6 +32,13 @@ def test_create_returns_masked_metadata_and_never_the_secret(emp_client):
     assert body["status"] == "ACTIVE" and body["owner"]["email"] and body["strength"]["bits"] > 0
 
 
+def test_owner_sees_the_unguessable_request_code_used_for_access_requests(emp_client):
+    body = create(emp_client).json()
+    cred = Credential.objects.get(pk=body["id"])
+    assert body["request_code"] == str(cred.uid)
+    assert emp_client.get(f"{URL}{cred.pk}/").json()["request_code"] == str(cred.uid)
+
+
 def test_stored_record_is_an_encrypted_envelope_not_plaintext(emp_client, emp, org_a):
     cred = Credential.objects.get(pk=create(emp_client).json()["id"])
     assert cred.organization_id == org_a.id and cred.owner_id == emp.id

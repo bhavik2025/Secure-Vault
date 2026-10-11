@@ -1,66 +1,64 @@
-import { useEffect, useState } from 'react'
-import { ApiError, getHealth, type HealthResponse } from './lib/api'
+import { Link, Route, Routes } from 'react-router-dom'
+import { RequireAuth, RequirePermission } from './auth/guards'
+import { Layout } from './components/Layout'
+import { CredentialDetailPage } from './pages/CredentialDetailPage'
+import { DashboardPage } from './pages/DashboardPage'
+import { LoginPage } from './pages/LoginPage'
+import { NotesPage } from './pages/NotesPage'
+import { NotificationsPage } from './pages/NotificationsPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { RequestsPage } from './pages/RequestsPage'
+import { SharedPage } from './pages/SharedPage'
+import { VaultPage } from './pages/VaultPage'
+import { AuditPage } from './pages/admin/AuditPage'
+import { DepartmentsPage } from './pages/admin/DepartmentsPage'
+import { EmployeesPage } from './pages/admin/EmployeesPage'
+import { PoliciesPage } from './pages/admin/PoliciesPage'
+import { ServicesPage } from './pages/admin/ServicesPage'
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ready'; health: HealthResponse }
-  | { kind: 'error'; message: string }
-
-function Badge({ ok, label }: { ok: boolean; label: string }) {
+function NotFound() {
   return (
-    <li className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
-      <span>{label}</span>
-      <span
-        className={ok ? 'font-medium text-emerald-600' : 'font-medium text-red-600'}
-        role="status"
-        aria-label={`${label} ${ok ? 'connected' : 'unreachable'}`}
-      >
-        {ok ? 'Connected' : 'Unreachable'}
-      </span>
-    </li>
+    <div className="py-16 text-center">
+      <h1 className="text-2xl font-semibold">Page not found</h1>
+      <p className="mt-2 text-sm text-slate-500">
+        <Link to="/" className="text-indigo-600 hover:underline">
+          Go to the dashboard
+        </Link>
+      </p>
+    </div>
   )
 }
 
+const guard = (permission: string, element: React.ReactNode) => (
+  <RequirePermission permission={permission}>{element}</RequirePermission>
+)
+
 export default function App() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-    getHealth()
-      .then((health) => !cancelled && setState({ kind: 'ready', health }))
-      .catch((err: unknown) => {
-        if (cancelled) return
-        // A 503 still carries a useful body (which dependency is down).
-        if (err instanceof ApiError && err.body && typeof err.body === 'object') {
-          setState({ kind: 'ready', health: err.body as HealthResponse })
-        } else {
-          setState({ kind: 'error', message: 'Cannot reach the SecureVault API.' })
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   return (
-    <main className="mx-auto max-w-xl px-4 py-16">
-      <h1 className="text-2xl font-semibold">SecureVault</h1>
-      <p className="mt-1 text-sm text-slate-500">Foundation check: frontend ↔ backend connectivity</p>
-
-      <section className="mt-8" aria-live="polite">
-        {state.kind === 'loading' && <p>Checking services…</p>}
-        {state.kind === 'error' && (
-          <p role="alert" className="text-red-600">
-            {state.message}
-          </p>
-        )}
-        {state.kind === 'ready' && (
-          <ul className="space-y-2">
-            <Badge ok={state.health.database} label="PostgreSQL" />
-            <Badge ok={state.health.redis} label="Redis" />
-          </ul>
-        )}
-      </section>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="vault" element={<VaultPage />} />
+        <Route path="vault/:id" element={<CredentialDetailPage />} />
+        <Route path="notes" element={<NotesPage />} />
+        <Route path="shared" element={<SharedPage />} />
+        <Route path="requests" element={<RequestsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route path="admin/departments" element={guard('departments.view', <DepartmentsPage />)} />
+        <Route path="admin/employees" element={guard('users.view', <EmployeesPage />)} />
+        <Route path="admin/services" element={guard('services.view', <ServicesPage />)} />
+        <Route path="admin/policies" element={guard('policies.view', <PoliciesPage />)} />
+        <Route path="admin/audit" element={guard('audit.view', <AuditPage />)} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
   )
 }
